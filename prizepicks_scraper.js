@@ -28,16 +28,16 @@ const PROXY_PASS = 'wifi;;;';
 
   console.log('Page loaded.');
 
-  // Wait for props to show up
-  await page.waitForSelector('[data-testid="entry-card"]', { timeout: 20000 });
+  // New: wait for stat line to appear
+  await page.waitForSelector('.stat-line', { timeout: 30000 });
 
   const props = await page.evaluate(() => {
-    const cards = Array.from(document.querySelectorAll('[data-testid="entry-card"]'));
+    const cards = Array.from(document.querySelectorAll('.stat-line'));
     return cards.map(card => {
-      const name = card.querySelector('[data-testid="player-name"]')?.innerText || 'Unknown';
-      const stat = card.querySelector('[data-testid="stat-text"]')?.innerText || 'Unknown';
-      const projection = card.querySelector('[data-testid="projection-score"]')?.innerText || 'Unknown';
-      return { name, stat, projection };
+      const name = card.querySelector('.name')?.innerText || 'Unknown';
+      const stat = card.querySelector('.category')?.innerText || 'Unknown';
+      const value = card.querySelector('.presale-score')?.innerText || 'Unknown';
+      return { name, stat, value };
     });
   });
 
