@@ -1,64 +1,67 @@
 import time
-import random
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 import undetected_chromedriver as uc
+from selenium.common.exceptions import TimeoutException
 
-def human_delay(a=1.5, b=3.5):
-    time.sleep(random.uniform(a, b))
+# -------- SETTINGS --------
+PRIZEPICKS_URL = "https://app.prizepicks.com/"
+SAVE_HTML_PATH = "debug.html"
+USE_PROXY = False  # Change to True if adding a proxy
+
+# -------- OPTIONAL PROXY (Soax example) --------
+PROXY_HOST = "proxy.soax.com"
+PROXY_PORT = 9000
+PROXY_USER = "2etWvpLRQJYyBQN2"
+PROXY_PASS = "wifi;;;;"
+
+def get_chrome_options():
+    options = Options()
+    options.headless = True
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--window-size=1920,1080")
+
+    if USE_PROXY:
+        options.add_argument(f'--proxy-server=http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}')
+
+    return options
 
 def setup_driver():
-    options = uc.ChromeOptions()
-    options.headless = False  # Show browser for debugging
-    options.add_argument("--start-maximized")
+    options = get_chrome_options()
     driver = uc.Chrome(options=options)
     return driver
 
-def fetch_prizepicks_props():
-    url = "https://www.prizepicks.com/"
-    driver = setup_driver()
-    driver.get(url)
-
+def scrape_prizepicks():
     try:
-        print("[INFO] Page loaded. Waiting for prop elements...")
+        driver = setup_driver()
+        driver.get(PRIZEPICKS_URL)
+        time.sleep(5)  # Let it load fully
 
-        # Wait for elements that might indicate props loaded
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "projection-card"))
-        )
-
-        elements = driver.find_elements(By.CLASS_NAME, "projection-card")
-        print(f"[INFO] Found {len(elements)} prop cards.")
-
-        props = []
-        for el in elements:
-            try:
-                name = el.find_element(By.CLASS_NAME, "name").text
-                stat = el.find_element(By.CLASS_NAME, "stat").text
-                line = el.find_element(By.CLASS_NAME, "presale-score").text
-                props.append({
-                    "player": name,
-                    "stat": stat,
-                    "line": line
-                })
-                human_delay(0.5, 1.2)
-            except Exception as e:
-                print("[WARN] Error parsing element:", e)
-
-        print(f"\n✅ Scraped {len(props)} props:")
-        for prop in props:
-            print(prop)
-
-        # DEBUG: Save HTML for inspection
-        with open("debug.html", "w", encoding="utf-8") as f:
+        # Save page for debug purposes
+        with open(SAVE_HTML_PATH, "w", encoding="utf-8") as f:
             f.write(driver.page_source)
-            print("[DEBUG] Saved page as debug.html for manual inspection.")
 
+        props = driver.find_elements(By.CLASS_NAME, "projection-container")
+        print(f"Found {len(props)} props.")
+
+        for prop in props:
+            try:
+                name = prop.find_element(By.CLASS_NAME, "name").text
+                stat = prop.find_element(By.CLASS_NAME, "stat").text
+                value = prop.find_element(By.CLASS_NAME, "score").text
+                print(f"{name} | {stat} | {value}")
+            except Exception as e:
+                print("Error extracting prop:", str(e))
+
+        driver.quit()
+
+    except TimeoutException:
+        print("Timeout while loading PrizePicks page.")
     except Exception as e:
-        print("❌ Error fetching data:", e)
-
-    driver.quit()
+        print("General scraping error:", str(e))
 
 if __name__ == "__main__":
-    fetch_prizepicks_props()
+    scrape_prizepicks()
