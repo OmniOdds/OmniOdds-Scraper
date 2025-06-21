@@ -2,17 +2,16 @@ const fs = require("fs");
 const axios = require("axios");
 const HttpsProxyAgent = require("https-proxy-agent");
 
-// Load proxy list
+// Load Soax proxy list (format: username:password@ip:port)
 const proxies = fs.readFileSync("us-proxylist.txt", "utf-8")
   .split("\n")
-  .filter(line => line.trim() !== "");
-
-const maxRetries = proxies.length;
+  .filter(p => p.trim() !== "");
 
 async function fetchData(proxy) {
-  try {
-    const agent = new HttpsProxyAgent(`http://${proxy}`);
+  const proxyUrl = `http://${proxy}`;
+  const agent = new HttpsProxyAgent(proxyUrl);
 
+  try {
     const response = await axios.get("https://api.prizepicks.com/projections", {
       httpsAgent: agent,
       headers: {
@@ -23,30 +22,27 @@ async function fetchData(proxy) {
         "Origin": "https://prizepicks.com",
         "Referer": "https://prizepicks.com/",
       },
-      timeout: 8000
+      timeout: 8000,
     });
 
     console.log("✅ Success with proxy:", proxy);
-    console.log("📊 Data sample:", response.data.included?.slice(0, 2)); // optional preview
-  } catch (err) {
-    console.log(`❌ Failed with proxy: ${proxy}`);
-    throw err;
+    console.log("📊 Data Sample:", response.data.included?.slice(0, 2));
+    return true;
+  } catch (error) {
+    console.log("❌ Failed with proxy:", proxy);
+    return false;
   }
 }
 
-async function startScraper() {
-  for (let i = 0; i < maxRetries; i++) {
+async function runWithRotation() {
+  for (let i = 0; i < proxies.length; i++) {
     const proxy = proxies[i];
-    console.log(`🌐 Trying proxy ${i + 1}/${maxRetries}: ${proxy}`);
-    try {
-      await fetchData(proxy);
-      return;
-    } catch (e) {
-      console.log("Retrying with next proxy...");
-    }
+    console.log(`🔁 Trying proxy ${i + 1}/${proxies.length}: ${proxy}`);
+    const success = await fetchData(proxy);
+    if (success) return;
   }
 
-  console.error("❌ All proxies failed. PrizePicks may be blocking all listed IPs.");
+  console.error("❌ All proxies failed. PrizePicks may be blocking all listed IPs or headers.");
 }
 
-startScraper();
+runWithRotation();
