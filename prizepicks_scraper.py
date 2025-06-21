@@ -1,51 +1,47 @@
 import time
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 def init_driver():
-    options = Options()
-    options.headless = True
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--window-size=1920,1080")
-    options.add_argument("--start-maximized")
-
-    print("[+] Initializing Chrome...")
-    driver = uc.Chrome(options=options, use_subprocess=True)
+    options = uc.ChromeOptions()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    driver = uc.Chrome(options=options)
     return driver
 
-def scroll_to_bottom(driver):
-    print("[+] Scrolling to load all props...")
+def scroll_full_page(driver, pause=2, scroll_count=20):
     last_height = driver.execute_script("return document.body.scrollHeight")
-    while True:
+    for _ in range(scroll_count):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(1.5)
+        time.sleep(pause)
         new_height = driver.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
             break
         last_height = new_height
 
 def scrape_prizepicks():
-    url = "https://app.prizepicks.com/"
+    url = "https://www.prizepicks.com"
     driver = init_driver()
+    print("[+] Initializing Chrome...")
     driver.get(url)
 
-    print("[+] Loading PrizePicks page...")
-    time.sleep(5)
+    print("[+] Waiting for props to load...")
+    time.sleep(8)
 
-    scroll_to_bottom(driver)
+    print("[+] Scrolling to load all props...")
+    scroll_full_page(driver, pause=2, scroll_count=25)
 
     print("[+] Saving HTML for debugging...")
-    with open("prizepicks_raw.html", "w", encoding="utf-8") as f:
+    with open("prizepicks_raw.html", "w", encoding='utf-8') as f:
         f.write(driver.page_source)
 
     driver.quit()
-    print("[✓] Raw HTML saved to prizepicks_raw.html")
+    print("[+] Raw HTML saved to prizepicks_raw.html")
 
 if __name__ == "__main__":
     scrape_prizepicks()
