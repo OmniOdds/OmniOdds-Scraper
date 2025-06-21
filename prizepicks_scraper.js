@@ -2,7 +2,7 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
-const proxyUser = '2etWVpLRQJYyBQN2';
+const proxyUser = '2etWvpLRQJYyBQN2';
 const proxyPass = 'wifi;;;;';
 const proxyHost = 'proxy.soax.com';
 const proxyPort = '9000';
@@ -13,48 +13,50 @@ const proxyPort = '9000';
     args: [
       `--proxy-server=http://${proxyHost}:${proxyPort}`,
       '--no-sandbox',
-      '--disable-setuid-sandbox'
-    ]
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled',
+      '--window-size=1920,1080'
+    ],
+    ignoreHTTPSErrors: true,
   });
 
   const page = await browser.newPage();
 
-  // Authenticate with SOAX proxy
+  // Authenticate with Soax proxy
   await page.authenticate({
     username: proxyUser,
     password: proxyPass
   });
 
-  // Intercept the raw API response
   let capturedData = null;
-  await page.setRequestInterception(true);
 
-  page.on('request', (req) => req.continue());
-
-  page.on('response', async (res) => {
-    const url = res.url();
+  // Intercept the PrizePicks API response
+  page.on('response', async (response) => {
+    const url = response.url();
     if (url.includes('/api/v2/players')) {
       try {
-        capturedData = await res.json();
-        console.log('[✅ API INTERCEPTED]');
-        console.log(JSON.stringify(capturedData, null, 2));
+        const json = await response.json();
+        capturedData = json;
+        console.log('\n✅ [SUCCESS] PrizePicks API Data:\n');
+        console.log(JSON.stringify(json, null, 2));
       } catch (err) {
-        console.error('Error parsing response:', err);
+        console.error('❌ Failed to parse JSON:', err.message);
       }
     }
   });
 
-  // Navigate to PrizePicks
+  // Go to PrizePicks
   await page.goto('https://app.prizepicks.com/', {
-    waitUntil: 'networkidle2',
+    waitUntil: 'domcontentloaded',
     timeout: 60000
   });
 
-  // Replaces page.waitForTimeout(10000)
+  // Wait and scroll to trigger API
+  await page.evaluate(() => window.scrollBy(0, 1500));
   await new Promise(resolve => setTimeout(resolve, 10000));
 
   if (!capturedData) {
-    console.error('❌ No data intercepted.');
+    console.log('❌ No data intercepted from /api/v2/players');
   }
 
   await browser.close();
