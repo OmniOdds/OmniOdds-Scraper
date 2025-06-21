@@ -1,6 +1,6 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const HttpsProxyAgent = require('https-proxy-agent');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 
 puppeteer.use(StealthPlugin());
 
@@ -10,11 +10,11 @@ const proxies = [
 
 const launchWithProxy = async (proxy) => {
   const proxyUrl = `http://${proxy}`;
-  const agent = HttpsProxyAgent(proxyUrl);
+  const agent = new HttpsProxyAgent(proxyUrl);
 
   const browser = await puppeteer.launch({
     headless: true,
-    args: [`--proxy-server=${proxyUrl}`, '--no-sandbox'],
+    args: [`--proxy-server=${proxyUrl}`, '--no-sandbox']
   });
 
   const page = await browser.newPage();
@@ -33,30 +33,27 @@ const scrapeWithRotation = async () => {
 
     try {
       const { browser, page } = await launchWithProxy(proxy);
-
       let data = null;
 
       page.on('response', async (response) => {
         const url = response.url();
         if (url.includes('/api/v2/players')) {
           try {
-            const json = await response.json();
-            data = json;
-            console.log('✅ Successfully intercepted /api/v2/players');
-            console.log(JSON.stringify(json, null, 2));
+            data = await response.json();
+            console.log('✅ Intercepted PrizePicks Data');
+            console.log(JSON.stringify(data, null, 2));
           } catch (err) {
-            console.error('❌ Failed to parse JSON:', err.message);
+            console.error('❌ JSON Parse Failed:', err.message);
           }
         }
       });
 
       await page.goto('https://prizepicks.com/', {
         waitUntil: 'networkidle2',
-        timeout: 60000,
+        timeout: 60000
       });
 
-      await page.waitForTimeout(7000); // Let all requests complete
-
+      await page.waitForTimeout(7000);
       await browser.close();
 
       if (data) return data;
@@ -70,5 +67,5 @@ const scrapeWithRotation = async () => {
 };
 
 scrapeWithRotation().catch((err) => {
-  console.error('❌ Scraping failed:', err.message);
+  console.error('❌ Final Error:', err.message);
 });
