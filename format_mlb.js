@@ -3,6 +3,12 @@ const fs = require('fs');
 const rawData = fs.readFileSync('prizepicks_mlb.json');
 const data = JSON.parse(rawData);
 
+// Safely check for 'included' field
+if (!data || !data.included || !Array.isArray(data.included)) {
+  console.error("❌ 'included' field is missing or invalid in prizepicks_mlb.json");
+  process.exit(1);
+}
+
 const formatted = data.included
   .filter(entry => entry.type === "new_player")
   .map(player => ({
