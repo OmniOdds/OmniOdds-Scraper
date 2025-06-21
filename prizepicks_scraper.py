@@ -1,42 +1,47 @@
-import json
 import time
-import random
+import json
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 import undetected_chromedriver as uc
 
-def get_stealth_driver():
+def create_driver():
     options = uc.ChromeOptions()
-    options.headless = False  # Set to True only when sure it's stable
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--headless=new")  # Optional: remove to see browser
     options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
 
-    driver = uc.Chrome(options=options)
-    return driver
+    return uc.Chrome(options=options)
 
-def scrape_prizepicks():
-    url = "https://api.prizepicks.com/projections?league_id=7&per_page=250"
-    driver = get_stealth_driver()
+def fetch_prizepicks_data(driver):
+    url = "https://api.prizepicks.com/projections?league_id=7"  # NBA = 7, NFL = 2, etc.
+    driver.get(url)
+    time.sleep(3)
 
     try:
-        driver.get(url)
-        time.sleep(random.uniform(5, 8))
+        pre = driver.find_element(By.TAG_NAME, "pre")
+        json_data = json.loads(pre.text)
 
-        body_text = driver.find_element(By.TAG_NAME, 'pre').text
-        data = json.loads(body_text)
-
-        filename = f"prizepicks_data_{int(time.time())}.json"
-        with open(filename, 'w') as f:
-            json.dump(data, f, indent=2)
-        print(f"✅ Data saved to {filename}")
-
+        print("✅ Data Fetched:")
+        print(json.dumps(json_data, indent=2))
+        return json_data
     except Exception as e:
-        print(f"🚨 Scraper failed: {e}")
-
-    finally:
-        driver.quit()
+        print("❌ Failed to fetch data:", str(e))
+        return None
 
 if __name__ == "__main__":
-    scrape_prizepicks()
+    print("⏳ Launching browser...")
+    driver = create_driver()
+
+    try:
+        data = fetch_prizepicks_data(driver)
+        if not data:
+            print("⚠️ No data returned.")
+    finally:
+        driver.quit()
