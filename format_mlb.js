@@ -1,35 +1,28 @@
 const fs = require('fs');
 
-// Load raw data
-const raw = JSON.parse(fs.readFileSync('prizepicks_mlb.json', 'utf8'));
+const rawData = fs.readFileSync('latest.json');
+const jsonData = JSON.parse(rawData);
 
-// Check for props in 'data' if 'included' is missing
-const source = raw.included && Array.isArray(raw.included)
-  ? raw.included
-  : raw.data || [];
+// Look inside either `included` or `data` array
+const players = jsonData.included || jsonData.data;
 
-if (!Array.isArray(source) || source.length === 0) {
-  console.error("❌ No player data found in 'included' or 'data' fields.");
+if (!players || !Array.isArray(players)) {
+  console.log("❌ No player data found in 'included' or 'data' fields.");
   process.exit(1);
 }
 
-// Filter out valid props
-const players = source.filter(entry =>
-  entry.type === 'new_player' || (entry.attributes && entry.attributes.name)
-);
+const formatted = players
+  .filter(entry => entry.type === "new_player")
+  .map(entry => {
+    const attr = entry.attributes;
+    return {
+      name: attr.name,
+      team: attr.team,
+      position: attr.position,
+      projection: attr.line_score,
+      stat_type: attr.stat_type,
+    };
+  });
 
-// Format props
-const formatted = players.map(player => {
-  const attr = player.attributes || {};
-  return {
-    player: attr.name,
-    team: attr.team || 'N/A',
-    stat_type: attr.stat_type || 'N/A',
-    projection: attr.line_score || attr.line || 'N/A',
-    position: attr.position || 'N/A'
-  };
-});
-
-// Save output
-fs.writeFileSync('mlb_formatted.json', JSON.stringify(formatted, null, 2));
-console.log(`✅ Saved ${formatted.length} MLB props to mlb_formatted.json`);
+console.log("🧾 MLB Props (Formatted Preview):");
+console.log(formatted.slice(0, 10)); // just show first 10
