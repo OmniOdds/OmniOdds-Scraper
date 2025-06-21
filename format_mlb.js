@@ -1,30 +1,29 @@
 const fs = require('fs');
 
+// Read the raw MLB JSON file
 const rawData = fs.readFileSync('prizepicks_mlb.json');
-const data = JSON.parse(rawData);
+const json = JSON.parse(rawData);
 
-// Safely check for 'included' field
-if (!data || !data.included || !Array.isArray(data.included)) {
-  console.error("❌ 'included' field is missing or invalid in prizepicks_mlb.json");
+// Confirm the structure
+if (!json || !Array.isArray(json.data)) {
+  console.error("❌ 'data' field missing or not an array in prizepicks_mlb.json");
   process.exit(1);
 }
 
-const formatted = data.included
-  .filter(entry => entry.type === "new_player")
-  .map(player => ({
-    name: player.attributes.name,
-    team: player.attributes.team,
-    position: player.attributes.position,
-    image: player.attributes.image_url,
-    league: player.attributes.league,
-    team_id: player.relationships?.team?.data?.id || 'N/A',
-    league_id: player.attributes.league_id
-  }));
+// Extract and format the props
+const formatted = json.data.map((entry) => {
+  const attr = entry.attributes || {};
+  return {
+    name: attr.name || "Unknown",
+    stat_type: attr.stat_type || "Unknown",
+    line_score: attr.line_score || "N/A",
+    team: attr.team || "Unknown",
+    projection_type: attr.projection_type || "Unknown",
+  };
+});
 
-console.log("✅ MLB Props (Formatted):\n");
+// Output
+console.log("✅ MLB Props (Formatted Preview):\n");
 formatted.slice(0, 10).forEach((p, i) => {
-  console.log(`${i + 1}. ${p.name} (${p.position}) - ${p.team} [${p.league}]`);
-  console.log(`   Image: ${p.image}`);
-  console.log(`   Team ID: ${p.team_id} | League ID: ${p.league_id}`);
-  console.log("------------------------------------------------");
+  console.log(`${i + 1}. ${p.name} – ${p.stat_type}: ${p.line_score} [${p.team}]`);
 });
