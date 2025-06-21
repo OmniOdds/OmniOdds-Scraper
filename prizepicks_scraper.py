@@ -1,44 +1,47 @@
 import os
 import time
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import load_dotenv
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 
-# Load proxy credentials
+# Load credentials from .env
 load_dotenv()
-PROXY_USER = os.getenv("PROXY_USER")
-PROXY_PASS = os.getenv("PROXY_PASS")
-PROXY_HOST = os.getenv("PROXY_HOST")
-PROXY_PORT = os.getenv("PROXY_PORT")
+PROXY = os.getenv("SOAX_PROXY")  # format: user:pass@host:port
 
-# Set up Chrome options
-options = Options()
-options.add_argument("--headless")
+# Proxy config
+proxy_parts = PROXY.split('@')
+proxy_auth = proxy_parts[0]
+proxy_host = proxy_parts[1]
+options = uc.ChromeOptions()
+options.add_argument("--headless=new")
 options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-
-# Add proxy settings
-proxy_auth = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
-options.add_argument(f"--proxy-server={proxy_auth}")
+options.add_argument(f'--proxy-server=http://{proxy_host}')
 
 # Launch browser
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+driver = uc.Chrome(options=options)
+driver.execute_cdp_cmd("Network.enable", {})
+driver.execute_cdp_cmd("Network.setExtraHTTPHeaders", {
+    "headers": {
+        "Proxy-Authorization": f"Basic {proxy_auth.encode('utf-8').hex()}"
+    }
+})
 
 try:
-    print("[*] Loading PrizePicks page...")
     driver.get("https://www.prizepicks.com")
-    time.sleep(5)
+    time.sleep(8)  # wait for JS to load
+    
+    # Optional scroll to trigger lazy load
+    driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
+    time.sleep(4)
 
-    print("[*] Saving HTML for debugging...")
-    with open("prizepicks_raw.html", "w", encoding="utf-8") as f:
+    # Save full page
+    with open("prizepicks_raw.html", "w", encoding='utf-8') as f:
         f.write(driver.page_source)
 
-    print("[*] Raw HTML saved to prizepicks_raw.html")
+    print("[✅] Page scraped successfully.")
+
 except Exception as e:
-    print(f"[!] Error: {e}")
+    print(f"[❌] Error: {e}")
 finally:
     driver.quit()
