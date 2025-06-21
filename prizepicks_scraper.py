@@ -1,62 +1,54 @@
-import time
-import json
-import random
 import requests
+import json
+import time
+import random
 
-HEADERS = {
-    "accept": "application/json",
-    "content-type": "application/json",
-    "origin": "https://app.prizepicks.com",
-    "referer": "https://app.prizepicks.com/",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-}
-
-# 🔁 Proxy rotation list (replace with your own proxies)
+# Actual working proxy list - REPLACE with your real proxy IPs and credentials
 PROXIES = [
-    "http://username:password@proxy1.example.com:8000",
-    "http://username:password@proxy2.example.com:8000",
-    "http://username:password@proxy3.example.com:8000"
+    "http://user123:pass456@198.51.100.45:8000",
+    "http://user123:pass456@203.0.113.12:8000",
+    "http://user123:pass456@172.16.254.22:8000"
 ]
 
-def get_proxy():
-    return {
-        "http": random.choice(PROXIES),
-        "https": random.choice(PROXIES),
-    }
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Origin": "https://app.prizepicks.com",
+    "Referer": "https://app.prizepicks.com/"
+}
 
-def fetch_props(pages=10):
+API_URL = "https://api.prizepicks.com/projections?per_page=250&page={}"
+
+def get_random_proxy():
+    return { "http": random.choice(PROXIES), "https": random.choice(PROXIES) }
+
+def fetch_props():
     all_props = []
-    for page in range(1, pages + 1):
+    for page in range(1, 11):
+        url = API_URL.format(page)
         print(f"[+] Fetching page {page}...")
-        url = f"https://api.prizepicks.com/projections?per_page=250&page={page}"
         try:
-            response = requests.get(url, headers=HEADERS, proxies=get_proxy(), timeout=10)
-
-            if response.status_code == 429:
-                print(f"[!] Rate limited on page {page}, skipping...")
-                continue
-            elif response.status_code != 200:
-                print(f"[!] Failed to fetch page {page}: HTTP {response.status_code}")
-                continue
-
-            data = response.json()
-            projections = data.get("data", [])
-            all_props.extend(projections)
-
-            time.sleep(random.uniform(2, 4))  # Random delay to reduce bot detection
-
+            proxy = get_random_proxy()
+            response = requests.get(url, headers=HEADERS, proxies=proxy, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if not data["data"]:
+                    print("[*] No more data found.")
+                    break
+                all_props.extend(data["data"])
+            elif response.status_code == 429:
+                print(f"[!] Rate limited on page {page}. Retrying after delay...")
+                time.sleep(random.randint(5, 10))
+            else:
+                print(f"[!] Unexpected status code {response.status_code} on page {page}")
         except Exception as e:
-            print(f"[!] Error fetching page {page}: {e}")
+            print(f"[!] Error on page {page}: {e}")
             continue
+        time.sleep(random.uniform(1, 2))
 
-    return all_props
-
-def save_to_file(data, filename="prizepicks_api_raw.json"):
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=2)
-    print(f"[✓] Saved {len(data)} props to {filename}")
+    with open("prizepicks_api_raw.json", "w") as f:
+        json.dump(all_props, f, indent=2)
+    print(f"[â] Saved {len(all_props)} props to prizepicks_api_raw.json")
 
 if __name__ == "__main__":
-    print("[+] Fetching props from PrizePicks API using rotating proxies...")
-    props = fetch_props()
-    save_to_file(props)
+    fetch_props()
