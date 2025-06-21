@@ -1,48 +1,74 @@
-const fs = require("fs");
-const axios = require("axios");
-const HttpsProxyAgent = require("https-proxy-agent");
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const HttpsProxyAgent = require('https-proxy-agent');
 
-// Load Soax proxy list (format: username:password@ip:port)
-const proxies = fs.readFileSync("us-proxylist.txt", "utf-8")
-  .split("\n")
-  .filter(p => p.trim() !== "");
+puppeteer.use(StealthPlugin());
 
-async function fetchData(proxy) {
+const proxies = [
+  'wifijus:PLRQJYyBQN2@proxy.soax.com:9000'
+];
+
+const launchWithProxy = async (proxy) => {
   const proxyUrl = `http://${proxy}`;
-  const agent = new HttpsProxyAgent(proxyUrl);
+  const agent = HttpsProxyAgent(proxyUrl);
 
-  try {
-    const response = await axios.get("https://api.prizepicks.com/projections", {
-      httpsAgent: agent,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Origin": "https://prizepicks.com",
-        "Referer": "https://prizepicks.com/",
-      },
-      timeout: 8000,
-    });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: [`--proxy-server=${proxyUrl}`, '--no-sandbox'],
+  });
 
-    console.log("✅ Success with proxy:", proxy);
-    console.log("📊 Data Sample:", response.data.included?.slice(0, 2));
-    return true;
-  } catch (error) {
-    console.log("❌ Failed with proxy:", proxy);
-    return false;
-  }
-}
+  const page = await browser.newPage();
 
-async function runWithRotation() {
+  await page.setUserAgent(
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+  );
+
+  return { browser, page };
+};
+
+const scrapeWithRotation = async () => {
   for (let i = 0; i < proxies.length; i++) {
     const proxy = proxies[i];
-    console.log(`🔁 Trying proxy ${i + 1}/${proxies.length}: ${proxy}`);
-    const success = await fetchData(proxy);
-    if (success) return;
+    console.log(`🟡 Trying proxy ${i + 1}/${proxies.length}: ${proxy}`);
+
+    try {
+      const { browser, page } = await launchWithProxy(proxy);
+
+      let data = null;
+
+      page.on('response', async (response) => {
+        const url = response.url();
+        if (url.includes('/api/v2/players')) {
+          try {
+            const json = await response.json();
+            data = json;
+            console.log('✅ Successfully intercepted /api/v2/players');
+            console.log(JSON.stringify(json, null, 2));
+          } catch (err) {
+            console.error('❌ Failed to parse JSON:', err.message);
+          }
+        }
+      });
+
+      await page.goto('https://prizepicks.com/', {
+        waitUntil: 'networkidle2',
+        timeout: 60000,
+      });
+
+      await page.waitForTimeout(7000); // Let all requests complete
+
+      await browser.close();
+
+      if (data) return data;
+    } catch (error) {
+      console.error(`❌ Proxy failed: ${proxy}`);
+      console.error(error.message);
+    }
   }
 
-  console.error("❌ All proxies failed. PrizePicks may be blocking all listed IPs or headers.");
-}
+  throw new Error('All proxies failed. PrizePicks may be blocking all listed IPs.');
+};
 
-runWithRotation();
+scrapeWithRotation().catch((err) => {
+  console.error('❌ Scraping failed:', err.message);
+});
