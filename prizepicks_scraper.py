@@ -1,34 +1,51 @@
-# prizepicks_scraper.py
-import requests
-import json
 import time
+import random
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+import undetected_chromedriver as uc
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-    "Accept": "application/json",
-    "Referer": "https://app.prizepicks.com/",
-    "Origin": "https://app.prizepicks.com",
-    "X-Requested-With": "XMLHttpRequest",
-}
+# Setup Proxy
+proxy_user = "2etWvpLRQJYyBQN2"
+proxy_pass = "wifi;;;,"
+proxy_host = "proxy.soax.com"
+proxy_port = "9000"
+proxy_string = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
 
-def fetch_prizepicks_props():
-    url = "https://api.prizepicks.com/projections?league_id=7"  # NBA
+def get_stealth_driver():
+    options = uc.ChromeOptions()
+    options.add_argument("--headless")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument(f"--proxy-server={proxy_string}")
+    return uc.Chrome(options=options)
+
+def scrape_prizepicks():
+    url = "https://app.prizepicks.com/"
+    driver = get_stealth_driver()
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        driver.get(url)
+        time.sleep(random.uniform(5, 8))  # human-like delay
 
-        with open("prizepicks_data.json", "w") as f:
-            json.dump(data, f, indent=2)
+        print("[✔] Page loaded")
+        # Wait and find prop elements — update selector as needed
+        elements = driver.find_elements(By.CLASS_NAME, "name")  # example class
 
-        print("✅ Data scraped and saved to prizepicks_data.json")
-        return data
+        if not elements:
+            print("[!] No prop elements found.")
+        else:
+            for el in elements:
+                print("Prop Name:", el.text)
 
-    except requests.exceptions.RequestException as e:
-        print("❌ Request failed:", e)
-        return None
+    except Exception as e:
+        print("[❌] Error scraping:", str(e))
+
+    finally:
+        driver.quit()
 
 if __name__ == "__main__":
-    print("📡 Scraping PrizePicks props...")
-    fetch_prizepicks_props()
+    print("[🚀] Scraping PrizePicks...")
+    scrape_prizepicks()
