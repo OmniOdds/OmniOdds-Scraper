@@ -1,47 +1,45 @@
-import os
 import time
-from dotenv import load_dotenv
-import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.options import Options
+import undetected_chromedriver as uc
 
-# Load credentials from .env
-load_dotenv()
-PROXY = os.getenv("SOAX_PROXY")  # format: user:pass@host:port
+def scroll_to_bottom(driver, delay=2):
+    """ Scrolls to bottom to trigger lazy loading """
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    while True:
+        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
+        time.sleep(delay)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
 
-# Proxy config
-proxy_parts = PROXY.split('@')
-proxy_auth = proxy_parts[0]
-proxy_host = proxy_parts[1]
 options = uc.ChromeOptions()
-options.add_argument("--headless=new")
-options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_argument(f'--proxy-server=http://{proxy_host}')
+options.headless = True
+options.add_argument('--no-sandbox')
+options.add_argument('--disable-dev-shm-usage')
 
-# Launch browser
 driver = uc.Chrome(options=options)
-driver.execute_cdp_cmd("Network.enable", {})
-driver.execute_cdp_cmd("Network.setExtraHTTPHeaders", {
-    "headers": {
-        "Proxy-Authorization": f"Basic {proxy_auth.encode('utf-8').hex()}"
-    }
-})
 
 try:
-    driver.get("https://www.prizepicks.com")
-    time.sleep(8)  # wait for JS to load
-    
-    # Optional scroll to trigger lazy load
-    driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
-    time.sleep(4)
+    print("[+] Opening PrizePicks...")
+    driver.get("https://app.prizepicks.com/")
+    time.sleep(5)
 
-    # Save full page
-    with open("prizepicks_raw.html", "w", encoding='utf-8') as f:
+    # Wait for PlayerCard elements to render
+    timeout = time.time() + 15
+    while time.time() < timeout:
+        if driver.find_elements(By.CLASS_NAME, "PlayerCard"):
+            break
+        time.sleep(1)
+
+    print("[+] Scrolling to load all props...")
+    scroll_to_bottom(driver)
+
+    with open("prizepicks_raw.html", "w", encoding="utf-8") as f:
         f.write(driver.page_source)
+    print("[✓] Page saved to prizepicks_raw.html")
 
-    print("[✅] Page scraped successfully.")
-
-except Exception as e:
-    print(f"[❌] Error: {e}")
 finally:
     driver.quit()
