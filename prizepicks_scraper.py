@@ -1,63 +1,91 @@
-import requests
-import json
 import time
 import random
+import json
+import os
+from datetime import datetime
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+import undetected_chromedriver as uc
 
-# === Load proxies from file ===
-def load_proxies(file_path='allgeo-proxylist.txt'):
-    with open(file_path, 'r') as f:
-        proxies = [line.strip() for line in f if line.strip()]
-    return proxies
+def load_proxies(file_path="allgeo-proxylist.txt"):
+    with open(file_path, "r") as f:
+        return [line.strip() for line in f if line.strip()]
 
-PROXIES = load_proxies()
+def get_random_proxy(proxies):
+    return random.choice(proxies)
 
-def get_proxy():
-    proxy = random.choice(PROXIES)
-    return {
-        "http": f"http://{proxy}",
-        "https": f"http://{proxy}"
-    }
+class PrizePicksScraper:
+    def __init__(self, headless=True, proxy_list_path="allgeo-proxylist.txt"):
+        self.headless = headless
+        self.driver = None
+        self.proxies = load_proxies(proxy_list_path)
+        self.props_data = []
+        self.setup_driver()
 
-# === Scraper logic ===
-def fetch_props():
-    all_props = []
-    base_url = "https://api.prizepicks.com/projections"
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json"
-    }
+    def setup_driver(self):
+        proxy = get_random_proxy(self.proxies)
+        print(f"Using proxy: {proxy}")
 
-    for page in range(1, 15):
-        params = {
-            "per_page": 250,
-            "page": page
-        }
+        options = uc.ChromeOptions()
+        if self.headless:
+            options.add_argument("--headless=new")
+        options.add_argument(f'--proxy-server={proxy}')
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--start-maximized")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--window-size=1920,1080")
 
-        proxy = get_proxy()
+        self.driver = uc.Chrome(options=options)
+
+    def human_delay(self, min_time=1, max_time=3):
+        time.sleep(random.uniform(min_time, max_time))
+
+    def scrape_prizepicks(self):
         try:
-            print(f"[+] Fetching page {page} with proxy: {proxy['http']}")
-            response = requests.get(base_url, headers=headers, params=params, proxies=proxy, timeout=15)
+            url = "https://app.prizepicks.com/"
+            self.driver.get(url)
+            self.human_delay(3, 5)
 
-            if response.status_code == 200:
-                data = response.json()
-                props = data.get("data", [])
-                print(f"[✓] Page {page}: {len(props)} props")
-                all_props.extend(props)
-            elif response.status_code == 429:
-                print("[!] Rate limited. Sleeping 10 seconds...")
-                time.sleep(10)
-                continue
-            else:
-                print(f"[!] Page {page} failed with status {response.status_code}")
+            WebDriverWait(self.driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[class*='card']"))
+            )
+            self.human_delay()
+
+            cards = self.driver.find_elements(By.CSS_SELECTOR, "div[class*='card']")
+            for card in cards:
+                try:
+                    player = card.find_element(By.CSS_SELECTOR, "div[class*='name']").text
+                    stat = card.find_element(By.CSS_SELECTOR, "div[class*='stat']").text
+                    line = card.find_element(By.CSS_SELECTOR, "div[class*='line']").text
+                    team = card.find_element(By.CSS_SELECTOR, "div[class*='team']").text
+                    self.props_data.append({
+                        "player": player,
+                        "stat": stat,
+                        "line": line,
+                        "team": team
+                    })
+                except Exception as e:
+                    print(f"Failed to parse card: {e}")
+                    continue
+
         except Exception as e:
-            print(f"[!] Error on page {page}: {str(e)}")
+            print(f"Scraping error: {e}")
+        finally:
+            self.driver.quit()
 
-        time.sleep(random.uniform(1.5, 3.5))  # simulate human delay
-
-    # === Save output ===
-    with open("prizepicks_api_raw.json", "w") as f:
-        json.dump(all_props, f, indent=2)
-    print(f"[✓] Saved {len(all_props)} props to prizepicks_api_raw.json")
+    def save_to_json(self, file_name="prizepicks_props.json"):
+        with open(file_name, "w") as f:
+            json.dump(self.props_data, f, indent=2)
+        print(f"Saved {len(self.props_data)} props to {file_name}")
 
 if __name__ == "__main__":
-    fetch_props()
+    scraper = PrizePicksScraper(headless=True)
+    scraper.scrape_prizepicks()
+    scraper.save_to_json()
