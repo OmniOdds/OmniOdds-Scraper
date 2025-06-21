@@ -4,6 +4,8 @@ const fs = require('fs');
 
 puppeteer.use(StealthPlugin());
 
+const delay = ms => new Promise(res => setTimeout(res, ms));
+
 (async () => {
   console.log('🟡 Launching browser...');
   const browser = await puppeteer.launch({
@@ -11,8 +13,9 @@ puppeteer.use(StealthPlugin());
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
       '--disable-blink-features=AutomationControlled',
+      '--disable-dev-shm-usage',
+      '--window-size=1920,1080'
     ],
   });
 
@@ -22,68 +25,75 @@ puppeteer.use(StealthPlugin());
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
   );
 
+  await page.setViewport({ width: 1920, height: 1080 });
+
   console.log('🟡 Navigating to PrizePicks...');
   await page.goto('https://www.prizepicks.com/', {
-    waitUntil: 'domcontentloaded',
-    timeout: 120000,
+    waitUntil: 'networkidle0',
+    timeout: 60000,
   });
 
-  // Use delay instead of waitForTimeout
-  const delay = ms => new Promise(res => setTimeout(res, ms));
   await delay(10000);
 
-  console.log('🟡 Intercepting network for props data...');
-  let rawData;
+  console.log('🟡 Intercepting API call...');
+  let apiResponse;
 
-  try {
-    rawData = await page.waitForResponse(
-      res =>
-        res.url().includes('/api/v2/players') &&
-        res.status() === 200 &&
-        res.request().method() === 'GET',
-      { timeout: 30000 }
-    );
-  } catch (err) {
-    console.warn('🔁 API not detected, retrying full reload...');
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await delay(10000);
-
+  const interceptApi = async () => {
     try {
-      rawData = await page.waitForResponse(
+      apiResponse = await page.waitForResponse(
         res =>
           res.url().includes('/api/v2/players') &&
-          res.status() === 200 &&
-          res.request().method() === 'GET',
-        { timeout: 30000 }
+          res.request().method() === 'GET' &&
+          res.status() === 200,
+        { timeout: 25000 }
       );
-    } catch (error) {
-      console.error('❌ Still failed to capture API.');
-      await browser.close();
-      return;
+      return true;
+    } catch {
+      return false;
     }
+  };
+
+  const maxRetries = 3;
+  let attempts = 0;
+  let success = await interceptApi();
+
+  while (!success && attempts < maxRetries) {
+    console.log(`🔁 Reload attempt ${attempts + 1}`);
+    await page.reload({ waitUntil: 'networkidle0' });
+    await delay(10000);
+    success = await interceptApi();
+    attempts++;
   }
 
-  const json = await rawData.json();
+  if (!success) {
+    console.error('❌ Failed to capture PrizePicks API after retries.');
+    await browser.close();
+    return;
+  }
 
+  const data = await apiResponse.json();
+
+  // Group props by sport
   const grouped = {};
+  data.included.forEach(p => {
+    const attr = p.attributes;
+    if (!attr || !attr.stat_type || !attr.line_score) return;
 
-  json.included.forEach(entry => {
-    if (!entry.attributes?.line_score || !entry.attributes?.stat_type) return;
-
-    const sport = entry.attributes.league || 'Other';
+    const sport = attr.league || 'Other';
     if (!grouped[sport]) grouped[sport] = [];
 
     grouped[sport].push({
-      name: entry.attributes.name,
-      stat: entry.attributes.stat_type,
-      value: entry.attributes.line_score,
-      team: entry.attributes.team,
-      matchup: entry.attributes.matchup,
+      name: attr.name,
+      stat: attr.stat_type,
+      value: attr.line_score,
+      team: attr.team,
+      matchup: attr.matchup,
     });
   });
 
   fs.writeFileSync('prizepicks_all_sports.json', JSON.stringify(grouped, null, 2));
-  console.log('✅ Saved props by sport to prizepicks_all_sports.json');
+  console.log('✅ Saved prizepicks_all_sports.json with', Object.keys(grouped).length, 'sports');
 
   await browser.close();
 })();
+
