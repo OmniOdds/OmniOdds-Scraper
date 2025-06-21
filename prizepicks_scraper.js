@@ -2,52 +2,61 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
-const PROXY_HOST = 'proxy.soax.com';
-const PROXY_PORT = '9000';
-const PROXY_USER = '2etWvpLRQJYyBQN2';
-const PROXY_PASS = 'wifi;;;';
+const proxyUser = '2etWVpLRQJYyBQN2';
+const proxyPass = 'wifi;;;;';
+const proxyHost = 'proxy.soax.com';
+const proxyPort = '9000';
 
 (async () => {
   const browser = await puppeteer.launch({
     headless: true,
     args: [
-      `--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`,
+      `--proxy-server=http://${proxyHost}:${proxyPort}`,
       '--no-sandbox',
       '--disable-setuid-sandbox'
     ]
   });
 
   const page = await browser.newPage();
-  await page.authenticate({ username: PROXY_USER, password: PROXY_PASS });
 
-  console.log('🟢 Launching browser...');
+  // Authenticate to SOAX proxy
+  await page.authenticate({
+    username: proxyUser,
+    password: proxyPass
+  });
+
+  // Intercept API call
+  let capturedData = null;
+  await page.setRequestInterception(true);
+  page.on('request', (req) => {
+    req.continue(); // Allow all requests
+  });
+
+  page.on('response', async (res) => {
+    const url = res.url();
+    if (url.includes('/api/v2/players')) {
+      try {
+        capturedData = await res.json();
+        console.log('[✅ INTERCEPTED DATA]');
+        console.log(JSON.stringify(capturedData, null, 2));
+      } catch (err) {
+        console.error('Error parsing intercepted data:', err);
+      }
+    }
+  });
+
+  // Go to PrizePicks main page
   await page.goto('https://app.prizepicks.com/', {
     waitUntil: 'networkidle2',
     timeout: 60000
   });
 
-  console.log('🟡 Scrolling to load props...');
-  for (let i = 0; i < 20; i++) {
-    await page.evaluate(() => window.scrollBy(0, 300));
-    await new Promise(resolve => setTimeout(resolve, 300));
+  // Wait for a reasonable time to allow requests to be triggered
+  await page.waitForTimeout(10000);
+
+  if (!capturedData) {
+    console.error('❌ No API data was intercepted.');
   }
-
-  console.log('🕒 Waiting for props to appear...');
-  await page.waitForSelector('div[data-testid="player-card"]', { timeout: 45000 });
-
-  const props = await page.evaluate(() => {
-    const cards = Array.from(document.querySelectorAll('div[data-testid="player-card"]'));
-
-    return cards.map(card => {
-      const name = card.querySelector('p[class*="PlayerName"]')?.innerText || 'Unknown';
-      const stat = card.querySelector('p[class*="StatTitle"]')?.innerText || 'Unknown';
-      const value = card.querySelector('p[class*="StatValue"]')?.innerText || 'Unknown';
-      return { name, stat, value };
-    });
-  });
-
-  console.log(`✅ Scraped ${props.length} player props:`);
-  console.table(props);
 
   await browser.close();
 })();
