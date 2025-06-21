@@ -28,11 +28,12 @@ puppeteer.use(StealthPlugin());
     timeout: 120000,
   });
 
-  // Give it time to fully load
-  await page.waitForTimeout(10000);
+  // Use delay instead of waitForTimeout
+  const delay = ms => new Promise(res => setTimeout(res, ms));
+  await delay(10000);
 
   console.log('🟡 Intercepting network for props data...');
-  let rawData = null;
+  let rawData;
 
   try {
     rawData = await page.waitForResponse(
@@ -42,11 +43,10 @@ puppeteer.use(StealthPlugin());
         res.request().method() === 'GET',
       { timeout: 30000 }
     );
-  } catch (e) {
-    console.log('❌ API not detected. Retrying full reload...');
-
+  } catch (err) {
+    console.warn('🔁 API not detected, retrying full reload...');
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(10000);
+    await delay(10000);
 
     try {
       rawData = await page.waitForResponse(
@@ -56,8 +56,8 @@ puppeteer.use(StealthPlugin());
           res.request().method() === 'GET',
         { timeout: 30000 }
       );
-    } catch (err) {
-      console.error('❌ Failed again after reload. Exiting.');
+    } catch (error) {
+      console.error('❌ Still failed to capture API.');
       await browser.close();
       return;
     }
