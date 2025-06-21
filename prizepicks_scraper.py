@@ -12,32 +12,37 @@ def setup_browser():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--no-sandbox")
     options.add_argument("--start-maximized")
-    options.add_argument("--headless")  # Remove this if you want to see it visually
+    options.add_argument("--headless")  # Optional: Remove if you want visual mode
     return webdriver.Chrome(options=options)
 
 def scrape_prizepicks_props(sport='NBA'):
     url = "https://app.prizepicks.com/"
     driver = setup_browser()
     driver.get(url)
-    wait = WebDriverWait(driver, 25)
+    wait = WebDriverWait(driver, 40)
 
     props = []
 
     try:
-        print("📡 Waiting for PrizePicks to load...")
-        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "sports-tabs")))
+        print("📡 Waiting for PrizePicks base container...")
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "Home__HomeContainer")))
 
-        # Click sport filter
-        print(f"🎯 Selecting {sport}...")
-        sport_button = wait.until(EC.element_to_be_clickable((By.XPATH, f"//button[contains(text(), '{sport}')]")))
-        sport_button.click()
-        time.sleep(3)
+        print(f"🎯 Trying to select sport: {sport}...")
+        time.sleep(2)  # Let the page settle
 
-        print("📄 Waiting for player cards to load...")
+        # Try selecting the sport button
+        try:
+            sport_button = wait.until(EC.element_to_be_clickable((By.XPATH, f"//button[contains(text(), '{sport}')]")))
+            sport_button.click()
+            print("✅ Sport selected.")
+        except:
+            print("⚠️ Could not click sport button — may already be selected or not loaded.")
+
+        print("📄 Waiting for player cards...")
         wait.until(EC.presence_of_element_located((By.CLASS_NAME, "player-card")))
         cards = driver.find_elements(By.CLASS_NAME, "player-card")
 
-        print(f"🔍 Found {len(cards)} cards, scraping...")
+        print(f"🔍 Found {len(cards)} cards...")
 
         for card in cards:
             try:
@@ -49,17 +54,17 @@ def scrape_prizepicks_props(sport='NBA'):
                     "line": stat,
                     "value": value
                 })
-            except Exception as card_error:
-                print("⚠️ Failed to parse a card:", card_error)
-                continue
+            except Exception as err:
+                print(f"⚠️ Failed to parse card: {err}")
 
-        # Save props
         with open("live_prizepicks_props.json", "w") as f:
             json.dump(props, f, indent=2)
 
-        print(f"✅ Successfully scraped {len(props)} props!")
+        print(f"✅ Scraped {len(props)} live props.")
+
     except Exception as e:
-        print("❌ Error during scraping:", e)
+        print("❌ Fatal error during scrape:", e)
+
     finally:
         driver.quit()
 
