@@ -1,23 +1,25 @@
 const fs = require('fs');
 
-const rawData = fs.readFileSync('latest.json');
+// Read MLB JSON data from correct file
+const rawData = fs.readFileSync('prizepicks_mlb.json');
 const jsonData = JSON.parse(rawData);
 
-// Look inside either `included` or `data` array
+// Access 'included' or fallback to 'data' array
 const players = jsonData.included || jsonData.data;
 
 if (!players || !Array.isArray(players)) {
-  console.log("❌ No player data found in 'included' or 'data' fields.");
+  console.error("❌ No player data found in 'included' or 'data' fields.");
   process.exit(1);
 }
 
+// Filter and map player props
 const formatted = players
-  .filter(entry => entry.type === "new_player")
+  .filter(entry => entry.type === "new_player" && entry.attributes)
   .map(entry => {
     const attr = entry.attributes;
     return {
       name: attr.name,
-      team: attr.team,
+      team: attr.team || attr.team_name || 'N/A',
       position: attr.position,
       projection: attr.line_score,
       stat_type: attr.stat_type,
@@ -25,4 +27,4 @@ const formatted = players
   });
 
 console.log("🧾 MLB Props (Formatted Preview):");
-console.log(formatted.slice(0, 10)); // just show first 10
+console.log(formatted.slice(0, 10)); // Show first 10
