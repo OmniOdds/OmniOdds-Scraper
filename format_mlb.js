@@ -1,25 +1,35 @@
 const fs = require('fs');
-const axios = require('axios');
 
-const url = 'https://api.prizepicks.com/projections?league_id=2&per_page=250&state=all'; // MLB is league_id=2
+// Load raw data
+const raw = JSON.parse(fs.readFileSync('prizepicks_mlb.json', 'utf8'));
 
-const headers = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-  'Accept': 'application/json',
-  'Origin': 'https://app.prizepicks.com',
-  'Referer': 'https://app.prizepicks.com/',
-};
+// Check for props in 'data' if 'included' is missing
+const source = raw.included && Array.isArray(raw.included)
+  ? raw.included
+  : raw.data || [];
 
-async function scrapePrizePicks() {
-  try {
-    console.log("⏳ Fetching PrizePicks MLB prop data...");
-    const response = await axios.get(url, { headers });
-
-    fs.writeFileSync('prizepicks_mlb.json', JSON.stringify(response.data, null, 2));
-    console.log("✅ MLB data saved to prizepicks_mlb.json");
-  } catch (err) {
-    console.error("❌ Failed to fetch PrizePicks data:", err.message);
-  }
+if (!Array.isArray(source) || source.length === 0) {
+  console.error("❌ No player data found in 'included' or 'data' fields.");
+  process.exit(1);
 }
 
-scrapePrizePicks();
+// Filter out valid props
+const players = source.filter(entry =>
+  entry.type === 'new_player' || (entry.attributes && entry.attributes.name)
+);
+
+// Format props
+const formatted = players.map(player => {
+  const attr = player.attributes || {};
+  return {
+    player: attr.name,
+    team: attr.team || 'N/A',
+    stat_type: attr.stat_type || 'N/A',
+    projection: attr.line_score || attr.line || 'N/A',
+    position: attr.position || 'N/A'
+  };
+});
+
+// Save output
+fs.writeFileSync('mlb_formatted.json', JSON.stringify(formatted, null, 2));
+console.log(`✅ Saved ${formatted.length} MLB props to mlb_formatted.json`);
