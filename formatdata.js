@@ -1,20 +1,42 @@
 const fs = require('fs');
 
-// Load the raw data
-const rawData = JSON.parse(fs.readFileSync('latest.json'));
+// Read scraped data
+const rawData = JSON.parse(fs.readFileSync('latest.json', 'utf8'));
+const projections = rawData.data;
+const included = rawData.included;
 
-// Extract and clean the projection data
-const cleanedProps = rawData.data
-  .filter(item => item.type === "projection" && item.attributes?.line_score !== null)
-  .map(item => ({
-    player_name: item.attributes?.description || "Unknown",
-    stat_type: item.attributes?.stat_type || "Unknown",
-    line_score: item.attributes?.line_score || 0,
-    start_time: item.attributes?.start_time || "Unknown",
-    projection_type: item.attributes?.projection_type || "Unknown",
-    is_live: item.attributes?.is_live || false
-  }));
+// Helper: link playerId to playerName and team
+const playerInfoMap = {};
+included.forEach(item => {
+  if (item.type === 'new_player') {
+    playerInfoMap[item.id] = {
+      name: item.attributes.name,
+      team: item.attributes.team,
+      position: item.attributes.position
+    };
+  }
+});
 
-// Save to file
-fs.writeFileSync('cleaned_props.json', JSON.stringify(cleanedProps, null, 2));
-console.log("✅ Cleaned data saved to cleaned_props.json");
+console.log("🧠 Formatted Props:\n");
+
+projections.forEach((item) => {
+  const attr = item.attributes;
+  const playerId = item.relationships.new_player.data.id;
+  const player = playerInfoMap[playerId] || {};
+
+  const name = player.name || "Unknown";
+  const team = player.team || "N/A";
+  const pos = player.position || "";
+
+  const stat = attr.stat_type || "Unknown";
+  const displayStat = attr.stat_display_name || stat;
+  const line = attr.line_score;
+  const projectionType = attr.projection_type;
+  const gameTime = attr.start_time;
+
+  console.log(`📌 ${name} (${team} ${pos})`);
+  console.log(`   🏀 Stat: ${displayStat} (${projectionType})`);
+  console.log(`   📈 Line: ${line}`);
+  console.log(`   ⏰ Game Time: ${gameTime}`);
+  console.log('------------------------------------');
+});
