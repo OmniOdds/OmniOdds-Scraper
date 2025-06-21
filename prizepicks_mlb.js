@@ -1,7 +1,7 @@
 const fs = require('fs');
 const axios = require('axios');
 
-const url = 'https://api.prizepicks.com/projections?league_id=3&per_page=250&state=all'; // MLB league_id=3
+const url = 'https://api.prizepicks.com/projections?league_id=2&per_page=250&state=all'; // MLB is league_id=2
 
 const headers = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -18,7 +18,7 @@ async function scrapePrizePicks() {
     fs.writeFileSync('prizepicks_mlb.json', JSON.stringify(response.data, null, 2));
     console.log("✅ MLB data saved to prizepicks_mlb.json");
   } catch (err) {
-    console.error("❌ Failed to fetch MLB PrizePicks data:", err.message);
+    console.error("❌ Failed to fetch PrizePicks data:", err.message);
   }
 }
 
