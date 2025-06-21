@@ -1,61 +1,63 @@
 import requests
-import random
-import time
 import json
+import time
+import random
 
-PROXIES = [
-    "http://2etWvpLRQJYyBQN2:wifi5@proxy.soax.com:9000"
-]
+# === Load proxies from file ===
+def load_proxies(file_path='allgeo-proxylist.txt'):
+    with open(file_path, 'r') as f:
+        proxies = [line.strip() for line in f if line.strip()]
+    return proxies
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Accept": "application/json",
-    "Origin": "https://prizepicks.com",
-    "Referer": "https://prizepicks.com/",
-}
+PROXIES = load_proxies()
 
 def get_proxy():
-    return {"http": random.choice(PROXIES), "https": random.choice(PROXIES)}
+    proxy = random.choice(PROXIES)
+    return {
+        "http": f"http://{proxy}",
+        "https": f"http://{proxy}"
+    }
 
-def fetch_prizepicks_props(max_retries=5):
+# === Scraper logic ===
+def fetch_props():
     all_props = []
-    page = 1
+    base_url = "https://api.prizepicks.com/projections"
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json"
+    }
 
-    while True:
-        url = f"https://api.prizepicks.com/projections?per_page=250&page={page}"
-        for attempt in range(max_retries):
-            try:
-                proxy = get_proxy()
-                print(f"[{page}] Fetching with proxy {proxy['http']} (Attempt {attempt + 1})")
-                response = requests.get(url, headers=HEADERS, proxies=proxy, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    props = data.get("data", [])
-                    if not props:
-                        print(f"[{page}] No more props found.")
-                        return all_props
-                    all_props.extend(props)
-                    print(f"[{page}] Fetched {len(props)} props.")
-                    break
-                elif response.status_code == 429:
-                    print(f"[{page}] Rate limited (429). Sleeping 10s...")
-                    time.sleep(10)
-                else:
-                    print(f"[{page}] Unexpected status code: {response.status_code}")
-            except Exception as e:
-                print(f"[{page}] Error: {e}")
-                time.sleep(3)
-        else:
-            print(f"[{page}] Failed after {max_retries} attempts. Moving on...")
-            break
-        page += 1
-        time.sleep(2)  # delay between pages
+    for page in range(1, 15):
+        params = {
+            "per_page": 250,
+            "page": page
+        }
 
-    return all_props
+        proxy = get_proxy()
+        try:
+            print(f"[+] Fetching page {page} with proxy: {proxy['http']}")
+            response = requests.get(base_url, headers=headers, params=params, proxies=proxy, timeout=15)
+
+            if response.status_code == 200:
+                data = response.json()
+                props = data.get("data", [])
+                print(f"[✓] Page {page}: {len(props)} props")
+                all_props.extend(props)
+            elif response.status_code == 429:
+                print("[!] Rate limited. Sleeping 10 seconds...")
+                time.sleep(10)
+                continue
+            else:
+                print(f"[!] Page {page} failed with status {response.status_code}")
+        except Exception as e:
+            print(f"[!] Error on page {page}: {str(e)}")
+
+        time.sleep(random.uniform(1.5, 3.5))  # simulate human delay
+
+    # === Save output ===
+    with open("prizepicks_api_raw.json", "w") as f:
+        json.dump(all_props, f, indent=2)
+    print(f"[✓] Saved {len(all_props)} props to prizepicks_api_raw.json")
 
 if __name__ == "__main__":
-    print("[+] Fetching PrizePicks props with rotating proxies...")
-    props = fetch_prizepicks_props()
-    with open("prizepicks_api_raw.json", "w") as f:
-        json.dump(props, f, indent=2)
-    print(f"[✓] Saved {len(props)} props to prizepicks_api_raw.json")
+    fetch_props()
