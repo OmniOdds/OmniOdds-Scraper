@@ -1,54 +1,61 @@
 import requests
-import json
-import time
 import random
+import time
+import json
 
-# Actual working proxy list - REPLACE with your real proxy IPs and credentials
 PROXIES = [
-    "http://user123:pass456@198.51.100.45:8000",
-    "http://user123:pass456@203.0.113.12:8000",
-    "http://user123:pass456@172.16.254.22:8000"
+    "http://2etWvpLRQJYyBQN2:wifi5@proxy.soax.com:9000"
 ]
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
     "Accept": "application/json",
-    "Origin": "https://app.prizepicks.com",
-    "Referer": "https://app.prizepicks.com/"
+    "Origin": "https://prizepicks.com",
+    "Referer": "https://prizepicks.com/",
 }
 
-API_URL = "https://api.prizepicks.com/projections?per_page=250&page={}"
+def get_proxy():
+    return {"http": random.choice(PROXIES), "https": random.choice(PROXIES)}
 
-def get_random_proxy():
-    return { "http": random.choice(PROXIES), "https": random.choice(PROXIES) }
-
-def fetch_props():
+def fetch_prizepicks_props(max_retries=5):
     all_props = []
-    for page in range(1, 11):
-        url = API_URL.format(page)
-        print(f"[+] Fetching page {page}...")
-        try:
-            proxy = get_random_proxy()
-            response = requests.get(url, headers=HEADERS, proxies=proxy, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if not data["data"]:
-                    print("[*] No more data found.")
-                    break
-                all_props.extend(data["data"])
-            elif response.status_code == 429:
-                print(f"[!] Rate limited on page {page}. Retrying after delay...")
-                time.sleep(random.randint(5, 10))
-            else:
-                print(f"[!] Unexpected status code {response.status_code} on page {page}")
-        except Exception as e:
-            print(f"[!] Error on page {page}: {e}")
-            continue
-        time.sleep(random.uniform(1, 2))
+    page = 1
 
-    with open("prizepicks_api_raw.json", "w") as f:
-        json.dump(all_props, f, indent=2)
-    print(f"[â] Saved {len(all_props)} props to prizepicks_api_raw.json")
+    while True:
+        url = f"https://api.prizepicks.com/projections?per_page=250&page={page}"
+        for attempt in range(max_retries):
+            try:
+                proxy = get_proxy()
+                print(f"[{page}] Fetching with proxy {proxy['http']} (Attempt {attempt + 1})")
+                response = requests.get(url, headers=HEADERS, proxies=proxy, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    props = data.get("data", [])
+                    if not props:
+                        print(f"[{page}] No more props found.")
+                        return all_props
+                    all_props.extend(props)
+                    print(f"[{page}] Fetched {len(props)} props.")
+                    break
+                elif response.status_code == 429:
+                    print(f"[{page}] Rate limited (429). Sleeping 10s...")
+                    time.sleep(10)
+                else:
+                    print(f"[{page}] Unexpected status code: {response.status_code}")
+            except Exception as e:
+                print(f"[{page}] Error: {e}")
+                time.sleep(3)
+        else:
+            print(f"[{page}] Failed after {max_retries} attempts. Moving on...")
+            break
+        page += 1
+        time.sleep(2)  # delay between pages
+
+    return all_props
 
 if __name__ == "__main__":
-    fetch_props()
+    print("[+] Fetching PrizePicks props with rotating proxies...")
+    props = fetch_prizepicks_props()
+    with open("prizepicks_api_raw.json", "w") as f:
+        json.dump(props, f, indent=2)
+    print(f"[✓] Saved {len(props)} props to prizepicks_api_raw.json")
