@@ -1,56 +1,52 @@
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+// scraper.js
+
+const axios = require('axios');
 const fs = require('fs');
 
-puppeteer.use(StealthPlugin());
+(async () => {
+  try {
+    console.log('🔄 Fetching all PrizePicks props by sport...');
 
-const PRIZEPICKS_URL = 'https://app.prizepicks.com/';
-const API_ENDPOINT = 'https://api.prizepicks.com/projections';
+    const response = await axios.get('https://api.prizepicks.com/projections');
+    const data = response.data;
 
-async function fetchAllProps() {
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage'
-        ]
+    const included = data.included || [];
+
+    // Group by sport
+    const sportsGrouped = {};
+
+    included.forEach(entry => {
+      if (entry.type === 'projection') {
+        const sport = entry.attributes.league || 'unknown';
+
+        if (!sportsGrouped[sport]) {
+          sportsGrouped[sport] = [];
+        }
+
+        const line = entry.attributes.line_score || entry.attributes.line || null;
+        const statName = entry.attributes.stat_type || entry.attributes.stat_display_name || '';
+        const description = entry.attributes.description || '';
+        const gameTime = entry.attributes.start_time || '';
+
+        sportsGrouped[sport].push({
+          description,
+          stat: statName,
+          line,
+          game_time: gameTime,
+          type: entry.attributes.projection_type || ''
+        });
+      }
     });
 
-    const page = await browser.newPage();
-    await page.goto(PRIZEPICKS_URL, { waitUntil: 'networkidle2' });
-
-    const rawResponse = await page.evaluate(async (endpoint) => {
-        const res = await fetch(endpoint);
-        return res.json();
-    }, API_ENDPOINT);
-
-    await browser.close();
-
-    const players = rawResponse.included.filter(i => i.type === 'new_player');
-    const projections = rawResponse.data;
-
-    const groupedProps = {};
-
-    projections.forEach(proj => {
-        const player = players.find(p => p.id === proj.relationships.new_player.data.id);
-        const sport = proj.attributes.league;
-
-        const entry = {
-            name: player.attributes.name,
-            stat_type: proj.attributes.stat_type,
-            line_score: proj.attributes.line_score,
-            game_time: proj.attributes.game_time,
-            team: player.attributes.team,
-            opponent: player.attributes.opponent
-        };
-
-        if (!groupedProps[sport]) groupedProps[sport] = [];
-        groupedProps[sport].push(entry);
+    // Save to file or print nicely
+    Object.keys(sportsGrouped).forEach(sport => {
+      const filename = `${sport.toLowerCase()}.json`;
+      fs.writeFileSync(filename, JSON.stringify(sportsGrouped[sport], null, 2));
+      console.log(`✅ Saved ${sportsGrouped[sport].length} props for ${sport} → ${filename}`);
     });
 
-    fs.writeFileSync('all_sports_props.json', JSON.stringify(groupedProps, null, 2));
-    console.log('✅ Props saved to all_sports_props.json grouped by sport');
-}
-
-fetchAllProps();
+    console.log('✅ All sports props scraped and saved.');
+  } catch (err) {
+    console.error('❌ Failed to fetch PrizePicks props:', err.message);
+  }
+})();
