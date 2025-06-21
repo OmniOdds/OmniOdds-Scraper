@@ -2,15 +2,15 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
-const proxyServer = 'proxy.soax.com:9000';
+const proxyServer = 'http://proxy.soax.com:9000'; // USE HTTP only
 const proxyUsername = '2etWpVLrQJvYBQN2';
-const proxyPassword = 'wif...'; // ← your real Soax password
+const proxyPassword = 'wif...'; // use full correct pass
 
 (async () => {
   const browser = await puppeteer.launch({
     headless: true,
     args: [
-      `--proxy-server=http://${proxyServer}`,
+      `--proxy-server=${proxyServer}`,
       '--no-sandbox',
       '--disable-setuid-sandbox'
     ]
@@ -18,51 +18,42 @@ const proxyPassword = 'wif...'; // ← your real Soax password
 
   const page = await browser.newPage();
 
-  // Authenticate to Soax Proxy
-  await page.authenticate({
-    username: proxyUsername,
-    password: proxyPassword
-  });
-
   try {
-    console.log('➡️ Navigating to PrizePicks...');
-    await page.goto('https://prizepicks.com/', { waitUntil: 'networkidle2', timeout: 60000 });
+    // Soax proxy login
+    await page.authenticate({
+      username: proxyUsername,
+      password: proxyPassword
+    });
 
-    console.log('⏳ Intercepting props API...');
+    console.log('➡️ Connecting through proxy...');
+    await page.goto('https://prizepicks.com/', {
+      waitUntil: 'domcontentloaded',
+      timeout: 60000
+    });
+
+    console.log('✅ Page loaded, intercepting /api/v2/players...');
     const [response] = await Promise.all([
-      page.waitForResponse(response =>
-        response.url().includes('/api/v2/players') && response.status() === 200,
-        { timeout: 60000 }
-      ),
-      page.reload({ waitUntil: 'networkidle0' }) // Trigger another request
+      page.waitForResponse(res => res.url().includes('/api/v2/players') && res.status() === 200, { timeout: 30000 }),
+      page.reload({ waitUntil: 'networkidle0' }) // triggers API call again
     ]);
 
     const data = await response.json();
 
-    // Group props by sport
     const sports = {};
     for (const item of data.included || []) {
-      const { attributes, relationships } = item;
-      const playerName = attributes?.name;
-      const statType = attributes?.stat_type;
-      const line = attributes?.line_score;
-      const sport = attributes?.league;
+      const name = item.attributes?.name;
+      const stat = item.attributes?.stat_type;
+      const line = item.attributes?.line_score;
+      const sport = item.attributes?.league;
 
       if (!sports[sport]) sports[sport] = [];
-
-      sports[sport].push({
-        player: playerName,
-        stat: statType,
-        line: line
-      });
+      sports[sport].push({ player: name, stat, line });
     }
 
-    console.log('✅ Scraped props by sport:\n');
     console.log(JSON.stringify(sports, null, 2));
-
-  } catch (error) {
-    console.error('❌ Scraper error:', error.message);
-  } finally {
+    await browser.close();
+  } catch (err) {
+    console.error('❌ Scraper error:', err.message);
     await browser.close();
   }
 })();
