@@ -1,69 +1,89 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const fs = require('fs-extra');
+const fs = require('fs');
 
 puppeteer.use(StealthPlugin());
 
-const scrapePrizePicks = async () => {
-    console.log("🟡 Launching browser...");
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    const page = await browser.newPage();
+(async () => {
+  console.log('🟡 Launching browser...');
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-blink-features=AutomationControlled',
+    ],
+  });
+
+  const page = await browser.newPage();
+
+  await page.setUserAgent(
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
+  );
+
+  console.log('🟡 Navigating to PrizePicks...');
+  await page.goto('https://www.prizepicks.com/', {
+    waitUntil: 'domcontentloaded',
+    timeout: 120000,
+  });
+
+  // Give it time to fully load
+  await page.waitForTimeout(10000);
+
+  console.log('🟡 Intercepting network for props data...');
+  let rawData = null;
+
+  try {
+    rawData = await page.waitForResponse(
+      res =>
+        res.url().includes('/api/v2/players') &&
+        res.status() === 200 &&
+        res.request().method() === 'GET',
+      { timeout: 30000 }
+    );
+  } catch (e) {
+    console.log('❌ API not detected. Retrying full reload...');
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(10000);
 
     try {
-        console.log("🔁 Navigating to PrizePicks...");
-        await page.goto('https://www.prizepicks.com/', {
-            waitUntil: 'networkidle2',
-            timeout: 60000
-        });
-
-        console.log("🔍 Intercepting network for props data...");
-        let dataFound = false;
-        let retries = 0;
-
-        while (!dataFound && retries < 5) {
-            const [response] = await Promise.all([
-                page.waitForResponse(resp => 
-                    resp.url().includes('/api/v2/players') && resp.status() === 200, { timeout: 15000 }
-                ).catch(() => null),
-                page.reload({ waitUntil: 'networkidle2' }),
-            ]);
-
-            if (response) {
-                const json = await response.json();
-                const bySport = {};
-
-                json.included?.forEach(playerProp => {
-                    const sport = playerProp.attributes?.league || 'Unknown';
-                    const entry = {
-                        name: playerProp.attributes?.name,
-                        stat_type: playerProp.attributes?.stat_type,
-                        line: playerProp.attributes?.line_score,
-                        game_time: playerProp.attributes?.start_time
-                    };
-
-                    if (!bySport[sport]) bySport[sport] = [];
-                    bySport[sport].push(entry);
-                });
-
-                await fs.writeJson('prizepicks_all_sports.json', bySport, { spaces: 2 });
-                console.log("✅ Props data saved to prizepicks_all_sports.json");
-                dataFound = true;
-            } else {
-                console.log(`⏳ Retry #${++retries}...`);
-                await new Promise(res => setTimeout(res, 3000));
-            }
-        }
-
-        if (!dataFound) console.log("❌ Failed to fetch PrizePicks props after retries.");
-
-    } catch (error) {
-        console.error("🔥 Scraper failed:", error);
-    } finally {
-        await browser.close();
+      rawData = await page.waitForResponse(
+        res =>
+          res.url().includes('/api/v2/players') &&
+          res.status() === 200 &&
+          res.request().method() === 'GET',
+        { timeout: 30000 }
+      );
+    } catch (err) {
+      console.error('❌ Failed again after reload. Exiting.');
+      await browser.close();
+      return;
     }
-};
+  }
 
-scrapePrizePicks();
+  const json = await rawData.json();
+
+  const grouped = {};
+
+  json.included.forEach(entry => {
+    if (!entry.attributes?.line_score || !entry.attributes?.stat_type) return;
+
+    const sport = entry.attributes.league || 'Other';
+    if (!grouped[sport]) grouped[sport] = [];
+
+    grouped[sport].push({
+      name: entry.attributes.name,
+      stat: entry.attributes.stat_type,
+      value: entry.attributes.line_score,
+      team: entry.attributes.team,
+      matchup: entry.attributes.matchup,
+    });
+  });
+
+  fs.writeFileSync('prizepicks_all_sports.json', JSON.stringify(grouped, null, 2));
+  console.log('✅ Saved props by sport to prizepicks_all_sports.json');
+
+  await browser.close();
+})();
