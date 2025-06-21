@@ -1,45 +1,47 @@
 import time
+from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.action_chains import ActionChains
 import undetected_chromedriver as uc
 
-def scroll_to_bottom(driver, delay=2):
-    """ Scrolls to bottom to trigger lazy loading """
-    last_height = driver.execute_script("return document.body.scrollHeight")
-    while True:
-        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
-        time.sleep(delay)
-        new_height = driver.execute_script("return document.body.scrollHeight")
-        if new_height == last_height:
-            break
-        last_height = new_height
+def scrape_prizepicks():
+    options = uc.ChromeOptions()
+    options.headless = True
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    driver = uc.Chrome(options=options)
+    
+    try:
+        print("[+] Loading PrizePicks page...")
+        driver.get("https://www.prizepicks.com")
+        time.sleep(5)  # Wait for JS to load the page
 
-options = uc.ChromeOptions()
-options.headless = True
-options.add_argument('--no-sandbox')
-options.add_argument('--disable-dev-shm-usage')
+        print("[+] Scrolling to load all props...")
+        last_height = driver.execute_script("return document.body.scrollHeight")
+        while True:
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(3)
+            new_height = driver.execute_script("return document.body.scrollHeight")
+            if new_height == last_height:
+                break
+            last_height = new_height
 
-driver = uc.Chrome(options=options)
+        try:
+            footer = driver.find_element(By.TAG_NAME, "footer")
+            ActionChains(driver).move_to_element(footer).perform()
+            time.sleep(2)
+        except:
+            print("[!] Footer not found, skipping...")
 
-try:
-    print("[+] Opening PrizePicks...")
-    driver.get("https://app.prizepicks.com/")
-    time.sleep(5)
+        html = driver.page_source
+        with open("prizepicks_raw.html", "w", encoding="utf-8") as f:
+            f.write(html)
+        print("[+] Raw HTML saved to prizepicks_raw.html")
+    
+    finally:
+        driver.quit()
 
-    # Wait for PlayerCard elements to render
-    timeout = time.time() + 15
-    while time.time() < timeout:
-        if driver.find_elements(By.CLASS_NAME, "PlayerCard"):
-            break
-        time.sleep(1)
-
-    print("[+] Scrolling to load all props...")
-    scroll_to_bottom(driver)
-
-    with open("prizepicks_raw.html", "w", encoding="utf-8") as f:
-        f.write(driver.page_source)
-    print("[✓] Page saved to prizepicks_raw.html")
-
-finally:
-    driver.quit()
+if __name__ == "__main__":
+    scrape_prizepicks()
